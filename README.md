@@ -74,8 +74,8 @@ Note that if the number of sampling units should be high to get reliable estimat
 * Chao, A. and Lee, S. M. (1992). Estimating the Number of Classes via Sample Coverage. Journal of the American Statistical Association, Vol. 87, No. 417, pp. 210-217
     * These two papers cover ACE and ACE-1
 * Chao, A. and Shen, T. J. (2003) Nonparametric estimation of Shannon's index of diversity when there are unseen species in sample. Environmental and Ecological Statistics 10, pp. 429-443
-    * Covers Shannon entropy/diversity estimation
 * Tiffeau-Mayer, A. (2024) Unbiased estimation of sampling variance for Simpson's diversity index. arXiv:2310.03439
+    * Covers Shannon/Simpson diversity estimation
 * Colwell, R. (2013) EstimateS: Statistical estimation of species richness and shared species from samples. Version 9 and earlier. User’s Guide and application.
 * Chao, A. and Ma, K. and Hsieh, T. C. and Chiu, C. H. (2016) User’s Guide for Online Program SpadeR (Species-richness Prediction And Diversity Estimation in R)
     * These two programs offer reference implementations for these metrics

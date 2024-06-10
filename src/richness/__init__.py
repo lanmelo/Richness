@@ -119,16 +119,14 @@ def get_frequency_counts(frequencies: "Series[int]") -> tuple[Array, Array]:
     return counts.astype(float), freqs
 
 
+@jax.jit
 def __frequency_count(
     counts: Array, freqs: Array, frequency: int
 ) -> float_type:
     """Get count of species with a given frequency."""
-    for i, freq in enumerate(freqs):
-        if freq > frequency:
-            return 0.0
-        if freq == frequency:
-            return counts[i]
-    return 0.0
+    idx = np.searchsorted(freqs, frequency)
+    concat = np.pad(counts, (0, 1))
+    return concat[idx]
 
 
 def raw_to_frequencies(
@@ -211,14 +209,6 @@ def abundance_richness_metrics(
             confidence=confidence,
         ),
         "Simpson Index": index_simpson(counts, freqs, confidence=confidence),
-        "Homogeneous Model": richness_coverage(
-            counts,
-            freqs,
-            cutoff=cutoff,
-            adjust_cutoff=adjust_cutoff,
-            confidence=confidence,
-            mode="homogeneous",
-        ),
         "Homogeneous (MLE)": richness_homogeneous_mle(
             counts, freqs, confidence=confidence
         ),
@@ -227,6 +217,14 @@ def abundance_richness_metrics(
         ),
         "Chao1-bc": richness_chao(
             counts, freqs, bias_correction=True, confidence=confidence
+        ),
+        "Homogeneous Model": richness_coverage(
+            counts,
+            freqs,
+            cutoff=cutoff,
+            adjust_cutoff=adjust_cutoff,
+            confidence=confidence,
+            mode="homogeneous",
         ),
         "ACE": richness_coverage(
             counts,
@@ -877,7 +875,7 @@ def richness_coverage(
             "cutoff must be greater than 0"
             " for incidence-based coverage estimators"
         )
-    if len(counts) <= 1 or 1 not in counts:
+    if len(counts) <= 1 or 1 not in freqs:
         return CoverageBasedEstimate(
             float("nan"),
             float("nan"),
@@ -923,16 +921,13 @@ def __shannon(counts: Array, freqs: Array) -> float_type:
     """
     n_obs = np.sum(freqs * counts)
     C = 1 - (__frequency_count(counts, freqs, 1) / n_obs)
-    if C == 0:
-        C = 1 - ((n_obs - 1) / n_obs)
+    C = np.where(C == 0, 1 - ((n_obs - 1) / n_obs), C)
     rel_freqs = freqs * C / n_obs
-    return np.exp(
-        jax.nn.logsumexp(
-            jax.lax.stop_gradient(np.log(counts))
-            + np.log(rel_freqs)
-            + np.log(-np.log(rel_freqs))
-            - log1mexp(-n_obs * np.log1p(-rel_freqs))
-        )  # -sum[(p log p) / (1 - (1 - p)^n)]
+    return np.sum(
+        -jax.lax.stop_gradient(counts)
+        * rel_freqs
+        * np.log(rel_freqs)
+        / (1 - np.power(1 - rel_freqs, n_obs))
     )
 
 
@@ -969,7 +964,7 @@ def index_shannon(
     rel_freqs = freqs / n_obs
     I_var = (
         np.sum(counts * rel_freqs * np.square(np.log(rel_freqs)))
-        - np.square(I_est)
+        - np.square(np.sum(counts * rel_freqs * np.log(rel_freqs)))
     ) / n_obs
 
     # S_est = richness_coverage(
