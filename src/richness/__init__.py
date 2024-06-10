@@ -224,7 +224,7 @@ def abundance_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="homogeneous",
+            homogeneous=True,
         ),
         "ACE": richness_coverage(
             counts,
@@ -232,7 +232,6 @@ def abundance_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="normal",
         ),
         "ACE-1": richness_coverage(
             counts,
@@ -240,14 +239,14 @@ def abundance_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="bias-corrected",
+            bias_corrected=True,
         ),
     }
 
     # Record basic statistics
     S_obs, n_obs = len(frequencies), sum(frequencies)
     freq_arr = frequencies.to_numpy()
-    _, auxiliary = __abundance(counts, freqs, cutoff=None)
+    _, auxiliary = __abundance(counts, freqs, cutoff=np.max(freqs))
     rel_freqs = freq_arr / n_obs
     shannon = -np.sum(rel_freqs * np.log(rel_freqs))
     simpson = np.sum(np.square(rel_freqs))
@@ -375,7 +374,7 @@ def incidence_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="homogeneous",
+            homogeneous=True,
         ),
         "Chao2": richness_chao(
             counts,
@@ -398,7 +397,6 @@ def incidence_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="normal",
         ),
         "ICE-1": richness_coverage(
             counts,
@@ -407,7 +405,7 @@ def incidence_richness_metrics(
             cutoff=cutoff,
             adjust_cutoff=adjust_cutoff,
             confidence=confidence,
-            mode="bias-corrected",
+            bias_corrected=True,
         ),
     }
     if units == 2:
@@ -417,7 +415,7 @@ def incidence_richness_metrics(
 
     # Record basic statistics
     S_obs, n_obs = len(frequencies), sum(frequencies)
-    _, auxiliary = __incidence(counts, freqs, units, cutoff=None)
+    _, auxiliary = __incidence(counts, freqs, units, cutoff=float("inf"))
     statistics = pd.DataFrame.from_dict(
         {
             "# detected individuals": {"Variable": "n_obs", "Value": n_obs},
@@ -711,8 +709,9 @@ def richness_chao(
 def __abundance(
     counts: Array,
     freqs: Array,
-    cutoff: int | None = 10,
-    mode: Literal["normal", "bias-corrected", "homogeneous"] = "normal",
+    cutoff: int = 10,
+    bias_corrected: bool = False,
+    homogeneous: bool = False,
 ) -> tuple[float_type, dict[str, Any]]:
     """Computes ACE(-1) estimator of richness for abundance data.
 
@@ -720,39 +719,39 @@ def __abundance(
         counts: A float Array of frequency counts.
         freqs: A float Array of frequencies.
         cutoff: Frequency cutoff for rare species used for estimating coverage.
-        mode: Whether to user `normal` (ACE), `bias-corrected` (ACE-1), or
-            homogeneous estimators.
+        bias_corrected: Whether to use ACE-1 instead of ACE.
+        homogeneous: Whether to use homogeneous assumption.
 
     Returns:
         A tuple containing, respectively, the estimated richness and a
         dictionary of auxiliary data.
     """
     f_1 = __frequency_count(counts, freqs, 1)
-    f_rare = counts[freqs <= cutoff] if cutoff is not None else counts
-    i_rare = freqs[freqs <= cutoff] if cutoff is not None else freqs
-    S_rare = np.sum(f_rare)
+    S_rare = np.sum(np.where(freqs <= cutoff, counts, 0))
     S_obs = np.sum(counts)
     S_abun = S_obs - S_rare
-    n_rare = np.sum(i_rare * f_rare)
+    n_rare = np.sum(np.where(freqs <= cutoff, freqs * counts, 0))
 
     C_rare = 1 - (f_1 / n_rare)
     S_est = S_abun + (S_rare / C_rare)
     auxiliary = {
         "C_rare": C_rare,
         "CV_rare": 1.0,
-        "n_rare": int(n_rare),
-        "S_rare": int(S_rare),
+        "n_rare": n_rare.astype(int),
+        "S_rare": S_rare.astype(int),
     }
 
-    if mode == "homogeneous":
+    if homogeneous:
         return S_est, auxiliary
 
-    summation = np.sum(i_rare * (i_rare - 1) * f_rare)
+    summation = np.sum(
+        np.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
+    )
     squareCV_rare = np.maximum(
         0.0, (S_rare / C_rare) * (summation / (n_rare * (n_rare - 1))) - 1
     )
 
-    if mode == "bias-corrected":
+    if bias_corrected:
         squareCV_rare = squareCV_rare * (
             1 + ((1 - C_rare) / C_rare) * (summation / (n_rare - 1))
         )
@@ -766,8 +765,9 @@ def __incidence(
     counts: Array,
     freqs: Array,
     units: int,
-    cutoff: int | None = 10,
-    mode: Literal["normal", "bias-corrected", "homogeneous"] = "normal",
+    cutoff: int = 10,
+    bias_corrected: bool = False,
+    homogeneous: bool = False,
 ) -> tuple[float_type, dict[str, Any]]:
     """Computes ICE(-1) estimator of richness for abundance data.
 
@@ -776,8 +776,8 @@ def __incidence(
         freqs: A float Array of frequencies.
         units: The number of sampling units in the incidence data.
         cutoff: Frequency cutoff for rare species used for estimating coverage.
-        mode: Whether to user `normal` (ICE), `bias-corrected` (ICE-1), or
-            homogeneous estimators.
+        bias_corrected: Whether to use ICE-1 instead of ICE.
+        homogeneous: Whether to use homogeneous assumption.
 
     Returns:
         A tuple containing, respectively, the estimated richness and a
@@ -785,12 +785,10 @@ def __incidence(
     """
     q_1 = __frequency_count(counts, freqs, 1)
     q_2 = __frequency_count(counts, freqs, 2)
-    q_infreq = counts[freqs <= cutoff] if cutoff is not None else counts
-    i_infreq = freqs[freqs <= cutoff] if cutoff is not None else freqs
     S_obs = np.sum(counts)
-    S_infreq = np.sum(q_infreq)
+    S_infreq = np.sum(np.where(freqs <= cutoff, counts, 0))
     S_freq = S_obs - S_infreq
-    n_infreq = np.sum(i_infreq * q_infreq)
+    n_infreq = np.sum(np.where(freqs <= cutoff, freqs * counts, 0))
 
     if q_1 > 0 and q_2 > 0:
         A = 2 * q_2 / ((units - 1) * q_1 + 2 * q_2)
@@ -805,14 +803,16 @@ def __incidence(
     auxiliary = {
         "C_rare": C_infreq,
         "CV_rare": 1.0,
-        "n_rare": int(n_infreq),
-        "S_rare": int(S_infreq),
+        "n_rare": n_infreq.astype(int),
+        "S_rare": S_infreq.astype(int),
     }
 
-    if mode == "homogeneous":
+    if homogeneous:
         return S_est, auxiliary
 
-    summation = np.sum(i_infreq * (i_infreq - 1) * q_infreq)
+    summation = np.sum(
+        np.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
+    )
     squareCV_infreq = np.maximum(
         0.0,
         (S_infreq / C_infreq)
@@ -821,7 +821,7 @@ def __incidence(
         - 1,
     )
 
-    if mode == "bias-corrected":
+    if bias_corrected:
         squareCV_infreq = squareCV_infreq * (
             1
             + (q_1 / C_infreq)
@@ -840,8 +840,9 @@ def richness_coverage(
     units: int = 1,
     cutoff: int = 10,
     adjust_cutoff: bool = True,
+    bias_corrected: bool = False,
+    homogeneous: bool = False,
     confidence: float = 0.95,
-    mode: Literal["normal", "bias-corrected", "homogeneous"] = "normal",
 ) -> CoverageBasedEstimate:
     """Computes A/ICE(-1) estimators of richness for abundance/incidence data.
 
@@ -859,8 +860,8 @@ def richness_coverage(
         cutoff: Frequency cutoff for rare species used for estimating coverage.
         adjust_cutoff: Whether to adjust cutoff in heterogeneous samples.
         confidence: The confidence level of the confidence interval.
-        mode: Whether to user `normal` (A/ICE), `bias-corrected` (A/ICE-1), or
-            homogeneous estimators.
+        bias_corrected: Whether to use A/ICE-1 instead of A/ICE.
+        homogeneous: Whether to use homogeneous assumption.
 
     Returns:
         Dataclass with the estimate, standard error, and confidence interval.
@@ -877,28 +878,20 @@ def richness_coverage(
         )
     if len(counts) <= 1 or 1 not in freqs:
         return CoverageBasedEstimate(
-            float("nan"),
-            float("nan"),
-            float("nan"),
-            float("nan"),
-            cutoff,
-            float("nan"),
-            float("nan"),
-            0,
-            0,
+            np.nan, np.nan, np.nan, np.nan, cutoff, np.nan, np.nan, 0, 0
         )
     S_obs, n_obs = np.sum(counts), np.sum(freqs * counts)
     if adjust_cutoff:
         S_obs, n_obs = np.sum(counts), np.sum(freqs * counts)
         cutoff = int(np.maximum(cutoff, n_obs // S_obs))
     if units == 1:
-        (S_est, auxiliary), gradient = jax.value_and_grad(
-            __abundance, has_aux=True, allow_int=True
-        )(counts, freqs, cutoff=cutoff, mode=mode)
+        (S_est, auxiliary), gradient = (
+            jax.value_and_grad(__abundance, has_aux=True, allow_int=True)
+        )(counts, freqs, cutoff, bias_corrected, homogeneous)
     else:
         (S_est, auxiliary), gradient = jax.value_and_grad(
             __incidence, has_aux=True, allow_int=True
-        )(counts, freqs, units, cutoff=cutoff, mode=mode)
+        )(counts, freqs, units, cutoff, bias_corrected, homogeneous)
     cov = np.diag(counts) - (counts * counts[..., np.newaxis] / S_est)
     S_var = np.sum(gradient * gradient[..., np.newaxis] * cov)
     lower, upper = __confidence_interval(
