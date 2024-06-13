@@ -1,4 +1,4 @@
-# SpeciesRichness
+# Richness
 
 Nonparametric estimation of species richness from abundance/incidence data.
 
@@ -14,7 +14,7 @@ This module provides functions for nonparametric estimation of species richness
 from both abundance and incidence data.
 
 ## Installation and Usage
-Install with `pip install git+https://github.com/lanmelo/SpeciesRichness.git`
+Install with `pip install git+https://github.com/lanmelo/Richness.git`
 
 Accessible in the command line with the `richness` command
 
