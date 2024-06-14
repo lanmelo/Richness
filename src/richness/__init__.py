@@ -177,7 +177,6 @@ class CoverageBasedEstimate(Estimate):
     S_rare: int
 
 
-@no_type_check
 def abundance_richness_metrics(
     frequencies: "Series[int]",
     cutoff: int = 10,
@@ -246,11 +245,11 @@ def abundance_richness_metrics(
     # Record basic statistics
     S_obs, n_obs = len(frequencies), sum(frequencies)
     freq_arr = frequencies.to_numpy()
-    _, auxiliary = __abundance(counts, freqs, cutoff=np.max(freqs))
+    _, auxiliary = __abundance(counts, freqs, cutoff=int(np.max(freqs) + 1))
     rel_freqs = freq_arr / n_obs
     shannon = -np.sum(rel_freqs * np.log(rel_freqs))
     simpson = np.sum(np.square(rel_freqs))
-    statistics = pd.DataFrame.from_dict(
+    statistics = pd.DataFrame.from_dict(  # type: ignore[call-overload]
         {
             "Sample Shannon entropy": {"Variable": "H_sh", "Value": shannon},
             "Sample Shannon diversity": {
@@ -275,35 +274,35 @@ def abundance_richness_metrics(
             "cut-off point": {"Variable": "cutoff", "Value": cutoff},
             "adjusted cut-off point": {
                 "Variable": "cutoff",
-                "Value": results["ACE"].cutoff,
+                "Value": results["ACE"].cutoff,  # type: ignore[attr-defined]
             },
             "# individuals in rare group": {
                 "Variable": "n_rare",
-                "Value": results["ACE"].n_rare,
+                "Value": results["ACE"].n_rare,  # type: ignore[attr-defined]
             },
             "# species in rare group": {
                 "Variable": "S_rare",
-                "Value": results["ACE"].S_rare,
+                "Value": results["ACE"].S_rare,  # type: ignore[attr-defined]
             },
             "coverage estimate of rare group": {
                 "Variable": "C_rare",
-                "Value": results["ACE"].C_rare,
+                "Value": results["ACE"].C_rare,  # type: ignore[attr-defined]
             },
             "CV estimate in ACE": {
                 "Variable": "CV_rare",
-                "Value": results["ACE"].CV_rare,
+                "Value": results["ACE"].CV_rare,  # type: ignore[attr-defined]
             },
             "CV1 estimate in ACE-1": {
                 "Variable": "CV1_rare",
-                "Value": results["ACE-1"].CV_rare,
+                "Value": results["ACE-1"].CV_rare,  # type: ignore[attr-defined]
             },
             "# individuals in abundant group": {
                 "Variable": "n_abun",
-                "Value": n_obs - results["ACE"].n_rare,
+                "Value": n_obs - results["ACE"].n_rare,  # type: ignore[attr-defined]
             },
             "# species in abundant group": {
                 "Variable": "S_abun",
-                "Value": S_obs - results["ACE"].S_rare,
+                "Value": S_obs - results["ACE"].S_rare,  # type: ignore[attr-defined]
             },
         },
         orient="index",
@@ -328,7 +327,6 @@ def abundance_richness_metrics(
     return statistics, df
 
 
-@no_type_check
 def incidence_richness_metrics(
     raw_incidence: Sequence["Series[int]"],
     n: int = 1,
@@ -415,8 +413,10 @@ def incidence_richness_metrics(
 
     # Record basic statistics
     S_obs, n_obs = len(frequencies), sum(frequencies)
-    _, auxiliary = __incidence(counts, freqs, units, cutoff=float("inf"))
-    statistics = pd.DataFrame.from_dict(
+    _, auxiliary = __incidence(
+        counts, freqs, units, cutoff=int(np.max(freqs) + 1)
+    )
+    statistics = pd.DataFrame.from_dict(  # type: ignore[call-overload]
         {
             "# detected individuals": {"Variable": "n_obs", "Value": n_obs},
             "# detected species": {"Variable": "S_obs", "Value": S_obs},
@@ -432,35 +432,35 @@ def incidence_richness_metrics(
             "cut-off point": {"Variable": "cutoff", "Value": cutoff},
             "adjusted cut-off point": {
                 "Variable": "cutoff",
-                "Value": results["ICE"].cutoff,
+                "Value": results["ICE"].cutoff,  # type: ignore[attr-defined]
             },
             "# individuals in infrequent group": {
                 "Variable": "n_infreq",
-                "Value": results["ICE"].n_rare,
+                "Value": results["ICE"].n_rare,  # type: ignore[attr-defined]
             },
             "# species in infrequent group": {
                 "Variable": "S_infreq",
-                "Value": results["ICE"].S_rare,
+                "Value": results["ICE"].S_rare,  # type: ignore[attr-defined]
             },
             "coverage estimate of infrequent group": {
                 "Variable": "C_infreq",
-                "Value": results["ICE"].C_rare,
+                "Value": results["ICE"].C_rare,  # type: ignore[attr-defined]
             },
             "CV estimate in ICE": {
                 "Variable": "CV_infreq",
-                "Value": results["ICE"].CV_rare,
+                "Value": results["ICE"].CV_rare,  # type: ignore[attr-defined]
             },
             "CV1 estimate in ICE-1": {
                 "Variable": "CV1_infreq",
-                "Value": results["ICE-1"].CV_rare,
+                "Value": results["ICE-1"].CV_rare,  # type: ignore[attr-defined]
             },
             "# individuals in frequent group": {
                 "Variable": "n_freq",
-                "Value": n_obs - results["ICE"].n_rare,
+                "Value": n_obs - results["ICE"].n_rare,  # type: ignore[attr-defined]
             },
             "# species in frequent group": {
                 "Variable": "S_freq",
-                "Value": S_obs - results["ICE"].S_rare,
+                "Value": S_obs - results["ICE"].S_rare,  # type: ignore[attr-defined]
             },
         },
         orient="index",

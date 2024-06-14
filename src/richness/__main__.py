@@ -11,9 +11,8 @@ from . import (
 )
 
 
-def make_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:
     """Creates ArgumentParser for command-line parsing."""
-
     parser = argparse.ArgumentParser(
         prog="richness",
         description=(
@@ -22,49 +21,62 @@ def make_parser() -> argparse.ArgumentParser:
         ),
     )
     subparsers = parser.add_subparsers(dest="command")
+    build_abundance_parser(subparsers)
+    build_incidence_parser(subparsers)
+    return parser
 
-    abundance_richness_parser = subparsers.add_parser(
+
+def build_abundance_parser(
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+) -> None:
+    """Add the abundance subcommand to an ArgumentParser."""
+    abundance_richness = subparsers.add_parser(
         "abundance",
         help="Estimate species richness from abundance frequencies",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    abundance_richness_parser.add_argument(
+    abundance_richness.add_argument(
         "-c",
         "--confidence",
         type=float,
         default=0.95,
         help="The confidence level of the confidence interval.",
     )
-    abundance_richness_parser.add_argument(
+    abundance_richness.add_argument(
         "-k",
         "--cutoff",
         type=int,
         default=10,
         help="Frequency cutoff for rare species used for estimating coverage.",
     )
-    abundance_richness_parser.add_argument(
+    abundance_richness.add_argument(
         "-d",
         "--disablecutoffadjust",
         action="store_true",
         help="Whether to disable cutoff adjustment in heterogeneous samples.",
     )
-    abundance_richness_parser.add_argument(
+    abundance_richness.add_argument(
         "frequencies", type=str, help="Path to an abundance frequency TSV."
     )
 
-    incidence_richness_parser = subparsers.add_parser(
+
+def build_incidence_parser(
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+) -> None:
+    """Add the incidence subcommand to an ArgumentParser."""
+    incidence_parser = subparsers.add_parser(
         "incidence",
         help="Estimate species richness from incidence frequencies",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    incidence_richness_parser.add_argument(
+    incidence_parser.add_argument(
         "-c",
         "--confidence",
         type=float,
         default=0.95,
         help="The confidence level of the confidence interval.",
     )
-    incidence_richness_parser.add_argument(
+    incidence_parser.add_argument(
         "-n",
         type=int,
         default=1,
@@ -73,43 +85,41 @@ def make_parser() -> argparse.ArgumentParser:
             " which will be sampled randomly into `n` units."
         ),
     )
-    incidence_richness_parser.add_argument(
+    incidence_parser.add_argument(
         "-k",
         "--cutoff",
         type=int,
         default=10,
         help="Frequency cutoff for rare species used for estimating coverage.",
     )
-    incidence_richness_parser.add_argument(
+    incidence_parser.add_argument(
         "-d",
         "--disablecutoffadjust",
         action="store_true",
         help="Whether to disable cutoff adjustment in heterogeneous samples.",
     )
-    incidence_richness_parser.add_argument(
+    incidence_parser.add_argument(
         "raw_incidence",
         type=str,
         nargs="*",
         help="Path to frequencies or list of paths to raw incidence data.",
     )
 
-    return parser
-
 
 def main() -> None:
     """Parses arguments and prints richness estimates."""
 
     start = time.time()
-    parser = make_parser()
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.command == "abundance":
 
         statistics, results = abundance_richness_metrics(
             read_frequencies(args.frequencies),
-            confidence=args.confidence,
             cutoff=args.cutoff,
             adjust_cutoff=not args.disablecutoffadjust,
+            confidence=args.confidence,
         )
         print(
             f"{statistics.to_string(float_format=lambda x: f'{x:.3f}')}"
@@ -127,9 +137,9 @@ def main() -> None:
         statistics, results = incidence_richness_metrics(
             [read_frequencies(i) for i in args.raw_incidence],
             n=args.n,
-            confidence=args.confidence,
             cutoff=args.cutoff,
             adjust_cutoff=not args.disablecutoffadjust,
+            confidence=args.confidence,
         )
         print(
             f"{statistics.to_string(float_format=lambda x: f'{x:.3f}')}"
