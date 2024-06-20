@@ -5,8 +5,8 @@ import sys
 import time
 
 from . import (
-    abundance_richness_metrics,
-    incidence_richness_metrics,
+    abundance_richness_string,
+    incidence_richness_string,
     read_frequencies,
 )
 
@@ -114,44 +114,24 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "abundance":
-
-        statistics, results = abundance_richness_metrics(
-            read_frequencies(args.frequencies),
-            cutoff=args.cutoff,
-            adjust_cutoff=not args.disablecutoffadjust,
-            confidence=args.confidence,
-        )
         print(
-            f"{statistics.to_string(float_format=lambda x: f'{x:.3f}')}"
-            "\n\n"
-            f"{results.to_string(float_format=lambda x: f'{x:.3f}')}"
-            "\n\n"
-            "See README.md for comparison on estimators."
-            "\n"
-            "tl;dr: If C>0.5 use Chao1 (or Chao1-bc if CV near zero);"
-            " If CV>2 use ACE-1; ACE otherwise"
+            abundance_richness_string(
+                read_frequencies(args.frequencies),
+                cutoff=args.cutoff,
+                adjust_cutoff=not args.disablecutoffadjust,
+                confidence=args.confidence,
+            )
         )
-
     elif args.command == "incidence":
-
-        statistics, results = incidence_richness_metrics(
-            [read_frequencies(i) for i in args.raw_incidence],
-            n=args.n,
-            cutoff=args.cutoff,
-            adjust_cutoff=not args.disablecutoffadjust,
-            confidence=args.confidence,
-        )
         print(
-            f"{statistics.to_string(float_format=lambda x: f'{x:.3f}')}"
-            "\n\n"
-            f"{results.to_string(float_format=lambda x: f'{x:.3f}')}"
-            "\n\n"
-            "See README.md for comparison on estimators."
-            "\n"
-            "tl;dr: If C>0.5 use Chao2 (or Chao2-bc if CV near zero);"
-            " If CV>2 use ICE-1; ICE otherwise"
+            incidence_richness_string(
+                [read_frequencies(i) for i in args.raw_incidence],
+                n=args.n,
+                cutoff=args.cutoff,
+                adjust_cutoff=not args.disablecutoffadjust,
+                confidence=args.confidence,
+            )
         )
-
     else:
         parser.print_help(sys.stderr)
         sys.exit(1)

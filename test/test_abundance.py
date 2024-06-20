@@ -32,22 +32,22 @@ richness_stats, richness_estimates = richness.abundance_richness_metrics(
 
 def test_coverage() -> None:
     check_estimate(
-        richness_stats.loc["coverage estimate", "Value"].round(3),
+        round(richness_stats.loc["coverage estimate", "Value"], 3),
         spader_stats.rx("    Coverage estimate for entire dataset", "Value"),
     )
 
 
 def test_cv() -> None:
     check_estimate(
-        richness_stats.loc["coefficient of variation", "Value"].round(3),
+        round(richness_stats.loc["coefficient of variation", "Value"], 3),
         spader_stats.rx("    CV for entire dataset", "Value"),
     )
 
 
 def test_coverage_ace() -> None:
     check_estimate(
-        richness_stats.loc["coverage estimate of rare group", "Value"].round(
-            3
+        round(
+            richness_stats.loc["coverage estimate of rare group", "Value"], 3
         ),
         spader_stats.rx(
             "    Estimate of the sample coverage for rare group", "Value"
@@ -57,14 +57,14 @@ def test_coverage_ace() -> None:
 
 def test_cv_ace() -> None:
     check_estimate(
-        richness_stats.loc["CV estimate in ACE", "Value"].round(3),
+        round(richness_stats.loc["CV estimate in ACE", "Value"], 3),
         spader_stats.rx("    Estimate of CV for rare group in ACE", "Value"),
     )
 
 
 def test_cv_ace1() -> None:
     check_estimate(
-        richness_stats.loc["CV1 estimate in ACE-1", "Value"].round(2),
+        round(richness_stats.loc["CV1 estimate in ACE-1", "Value"], 2),
         spader_stats.rx(
             "    Estimate of CV1 for rare group in ACE-1", "Value"
         ),

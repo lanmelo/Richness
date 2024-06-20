@@ -48,6 +48,7 @@ Abundance data counts the frequency of individuals from each species in an area.
 * Abundance-based Coverage Estimator (ACE)
     * Utilizes a frequency cutoff to calculate Good-Turing sample coverage
     * Bias-corrected form ACE-1 should be used for heterogenous (`CV > 2`) data
+* tl;dr: if C>0.5 use Chao1 (or Chao1-bc if CV near zero); if CV>2 use ACE-1; ACE otherwise
 
 ## Incidence-based metrics
 Incidence data uses the (binary) presence of a species across multiple sampling units.
@@ -64,6 +65,7 @@ Note that if the number of sampling units should be high to get reliable estimat
 * Incidence-based Coverage Estimator (ICE)
     * Utilizes a frequency cutoff to calculate Good-Turing sample coverage
     * Bias-corrected form ICE-1 should be used for heterogenous (`CV > 2`) data
+* tl;dr: if C>0.5 use Chao2 (or Chao2-bc if CV near zero); if CV>2 use ICE-1; ICE otherwise
 
 ## References:
 * Gotelli N. J. and Chao A. (2013) Measuring and Estimating Species Richness, Species Diversity, and Biotic Similarity from Sampling Data. Levin S.A. (ed.) Encyclopedia of Biodiversity, second edition, Volume 5, pp. 195- 211.
