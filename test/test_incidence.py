@@ -38,23 +38,26 @@ def test_units() -> None:
 
 def test_coverage() -> None:
     check_estimate(
-        richness_stats.loc["coverage estimate", "Value"].round(3),
+        round(richness_stats.loc["coverage estimate", "Value"], 3),
         spader_stats.rx("    Coverage estimate for entire dataset", "Value"),
     )
 
 
 def test_cv() -> None:
     check_estimate(
-        richness_stats.loc["coefficient of variation", "Value"].round(3),
+        round(richness_stats.loc["coefficient of variation", "Value"], 3),
         spader_stats.rx("    CV for entire dataset", "Value"),
     )
 
 
 def test_coverage_ice() -> None:
     check_estimate(
-        richness_stats.loc[
-            "coverage estimate of infrequent group", "Value"
-        ].round(2),
+        round(
+            richness_stats.loc[
+                "coverage estimate of infrequent group", "Value"
+            ],
+            2,
+        ),
         spader_stats.rx(
             "    Estimated sample coverage for infrequent group", "Value"
         ),
@@ -63,7 +66,7 @@ def test_coverage_ice() -> None:
 
 def test_cv_ice() -> None:
     check_estimate(
-        richness_stats.loc["CV estimate in ICE", "Value"].round(3),
+        round(richness_stats.loc["CV estimate in ICE", "Value"], 3),
         spader_stats.rx(
             "    Estimated CV for infrequent group in ICE", "Value"
         ),
@@ -72,7 +75,7 @@ def test_cv_ice() -> None:
 
 def test_cv_ice1() -> None:
     check_estimate(
-        richness_stats.loc["CV1 estimate in ICE-1", "Value"].round(3),
+        round(richness_stats.loc["CV1 estimate in ICE-1", "Value"], 3),
         spader_stats.rx(
             "    Estimated CV1 for infrequent group in ICE-1", "Value"
         ),

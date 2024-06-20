@@ -86,6 +86,16 @@ def build_incidence_parser(
         ),
     )
     incidence_parser.add_argument(
+        "-u",
+        "--units",
+        type=int,
+        default=None,
+        help=(
+            "The number of sampling units. Used only if a single incidence"
+            " frequency Series is provided and `n == 1`."
+        ),
+    )
+    incidence_parser.add_argument(
         "-k",
         "--cutoff",
         type=int,
@@ -127,6 +137,7 @@ def main() -> None:
             incidence_richness_string(
                 [read_frequencies(i) for i in args.raw_incidence],
                 n=args.n,
+                units=args.units,
                 cutoff=args.cutoff,
                 adjust_cutoff=not args.disablecutoffadjust,
                 confidence=args.confidence,

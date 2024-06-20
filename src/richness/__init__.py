@@ -337,7 +337,7 @@ def abundance_richness_string(
 def incidence_richness_metrics(
     raw_incidence: Sequence["Series[int]"],
     n: int = 1,
-    units: int = 1,
+    units: int | None = None,
     cutoff: int = 10,
     adjust_cutoff: bool = True,
     confidence: float = 0.95,
@@ -364,10 +364,16 @@ def incidence_richness_metrics(
     # Parse input
     if n > 1:
         raw_incidence = split_frequencies(raw_incidence[0], n)
+        units = n
     if len(raw_incidence) > 1:
         frequencies = raw_to_frequencies(raw_incidence)
         units = len(raw_incidence)
     else:
+        if units is None:
+            raise ValueError(
+                "If a single incidence frequency Series is provided,"
+                " the number of units must also be specified."
+            )
         frequencies = raw_incidence[0]
 
     # Get basic statistics
@@ -447,6 +453,7 @@ def incidence_richness_metrics(
         },
         orient="index",
         columns=["Variable", "Value"],
+        dtype=object,
     )
 
     # Build results dataframe
