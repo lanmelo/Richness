@@ -22,9 +22,6 @@ were only detected once). Frequency counts are stored as a float Array to allow
 for gradient calculation.
 """
 
-# TODO: check for off by one errors (ex. every species observed > 1 - use df?)
-# TODO: make sure 0's are handled correctly
-
 from __future__ import annotations
 
 import gzip
@@ -36,7 +33,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal, TypeAlias, cast
 
 import jax
-import jax.numpy as np
+import jax.numpy as jnp
+import numpy as np
 import pandas as pd
 import scipy.special
 import scipy.stats
@@ -56,7 +54,7 @@ def log1mexp(x: jax.typing.ArrayLike) -> Array:
 
     https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf.
     """
-    return np.where(x > 0.693, np.log1p(-np.exp(-x)), np.log(-np.expm1(-x)))  # type: ignore[operator]
+    return jnp.where(x > 0.693, jnp.log1p(-jnp.exp(-x)), jnp.log(-jnp.expm1(-x)))  # type: ignore[operator]
 
 
 def read_frequencies(path: str) -> Series[int]:
@@ -113,8 +111,11 @@ def get_frequency_counts(frequencies: Series[int]) -> tuple[Array, Array]:
         A tuple (counts, freqs), where counts is a 1d float Array of frequency
         counts and freqs is a 1d int Array of their corresponding frequencies.
     """
-    freqs, counts = np.unique(frequencies.to_numpy(), return_counts=True)
-    return counts.astype(float), freqs
+    freqs, counts = np.unique(frequencies, return_counts=True)
+    if freqs[0] == 0:
+        freqs = freqs[1:]
+        counts = counts[1:]
+    return cast(Array, counts.astype(float)), cast(Array, freqs)
 
 
 @jax.jit
@@ -122,8 +123,8 @@ def _frequency_count(
     counts: Array, freqs: Array, frequency: int
 ) -> float_type:  # typing issue: https://github.com/google/jax/issues/10311
     """Get count of species with a given frequency."""
-    idx = np.searchsorted(freqs, frequency)
-    concat = np.pad(counts, (0, 1))
+    idx = jnp.searchsorted(freqs, frequency)
+    concat = jnp.pad(counts, (0, 1))
     return concat[idx]
 
 
@@ -201,12 +202,12 @@ def abundance_richness_metrics(
     """
     # Get basic statistics
     counts, freqs = get_frequency_counts(frequencies)
-    S_obs, n_obs = len(frequencies), sum(frequencies)
-    freq_arr = frequencies.to_numpy()
-    _, coverage = _abundance(counts, freqs, cutoff=int(np.max(freqs) + 1))
-    rel_freqs = freq_arr / n_obs
-    shannon = float(-np.sum(rel_freqs * np.log(rel_freqs)))
-    simpson = float(np.sum(np.square(rel_freqs)))
+    S_obs = jnp.sum(counts)  # len(frequencies)
+    n_obs = jnp.sum(counts * freqs)  # sum(frequencies)
+    _, coverage = _abundance(counts, freqs, cutoff=int(jnp.max(freqs) + 1))
+    rel_freqs = freqs / n_obs
+    shannon = float(-jnp.sum(counts * (rel_freqs) * jnp.log(rel_freqs)))
+    simpson = float(jnp.sum(counts * jnp.square(rel_freqs)))
 
     # Get all estimates
     shannon_estimate = index_shannon(
@@ -254,7 +255,7 @@ def abundance_richness_metrics(
     statistics = pd.DataFrame.from_dict(
         {
             "Sample Shannon entropy": ["H_sh", shannon],
-            "Sample Shannon diversity": ["D1=e^H_sh", np.exp(shannon)],
+            "Sample Shannon diversity": ["D1=e^H_sh", jnp.exp(shannon)],
             "Sample Simpson index": ["H_si", simpson],
             "Sample Simpson diversity": ["D2=1/H_si", 1 / simpson],
             "# detected individuals": ["n_obs", n_obs],
@@ -385,9 +386,10 @@ def incidence_richness_metrics(
 
     # Get basic statistics
     counts, freqs = get_frequency_counts(frequencies)
-    S_obs, n_obs = len(frequencies), sum(frequencies)
+    S_obs = jnp.sum(counts)  # len(frequencies)
+    n_obs = jnp.sum(counts * freqs)  # sum(frequencies)
     _, coverage = _incidence(
-        counts, freqs, units, cutoff=int(np.max(freqs) + 1)
+        counts, freqs, units, cutoff=int(jnp.max(freqs) + 1)
     )
 
     # Get all estimates
@@ -556,18 +558,18 @@ def _confidence_interval(
         A tuple (lower, upper), which are the bounds of the interval.
     """
     sigmas = cast(float, scipy.stats.norm.interval(confidence)[1])
-    S_obs = np.sum(counts)
+    S_obs = jnp.sum(counts)
 
     if log_transform:
         T = S_est - S_obs
-        K = math.exp(sigmas * math.sqrt(math.log(1 + (S_var / np.square(T)))))
+        K = math.exp(sigmas * math.sqrt(math.log(1 + (S_var / jnp.square(T)))))
         return S_obs + (T / K), S_obs + (T * K)
 
-    P = np.sum(counts * np.exp(-freqs)) / S_obs
+    P = jnp.sum(counts * jnp.exp(-freqs)) / S_obs
     S_corr = S_obs / (1 - P)
     error = math.sqrt(S_var) / (1 - P)
     lower = S_corr - (sigmas * error)
-    return np.maximum(S_obs, lower), S_corr + (sigmas * error)
+    return jnp.maximum(S_obs, lower), S_corr + (sigmas * error)
 
 
 def richness_chapman(
@@ -607,13 +609,13 @@ def richness_chapman(
     )
     lower = (K + n - k - 0.5) + (
         (((K - k + 0.5) * (n - k + 0.5)) / (k + 0.5))
-        * np.exp(-sigmas * np.sqrt(theta_var))
+        * jnp.exp(-sigmas * jnp.sqrt(theta_var))
     )
     upper = (K + n - k - 0.5) + (
         (((K - k + 0.5) * (n - k + 0.5)) / (k + 0.5))
-        * np.exp(sigmas * np.sqrt(theta_var))
+        * jnp.exp(sigmas * jnp.sqrt(theta_var))
     )
-    return Estimate(S_est, float(np.sqrt(S_var)), float(lower), float(upper))
+    return Estimate(S_est, float(jnp.sqrt(S_var)), float(lower), float(upper))
 
 
 def richness_homogeneous_mle(
@@ -632,16 +634,16 @@ def richness_homogeneous_mle(
     Returns:
         Dataclass with the estimate, standard error, and confidence interval.
     """
-    S_obs, n_obs = np.sum(counts), np.sum(freqs * counts)
-    S_est = np.real(
+    S_obs, n_obs = jnp.sum(counts), jnp.sum(freqs * counts)
+    S_est = jnp.real(
         n_obs
         / (
-            scipy.special.lambertw((-n_obs / S_obs) * np.exp(-n_obs / S_obs))
+            scipy.special.lambertw((-n_obs / S_obs) * jnp.exp(-n_obs / S_obs))
             + (n_obs / S_obs)
         )
     )
 
-    error = S_obs - S_est * (1 - np.exp(-n_obs / S_est))
+    error = S_obs - S_est * (1 - jnp.exp(-n_obs / S_est))
     if error > 1e-5:
         warnings.warn(
             f"Failed to find MLE solution, with an error of {error}",
@@ -649,22 +651,22 @@ def richness_homogeneous_mle(
         )
 
     if abs(S_est - S_obs) >= 1e-5:
-        S_var = np.exp(
-            np.log(S_est)
-            - np.logaddexp(
-                -1, np.logaddexp(n_obs / S_est, np.log(n_obs / S_est))
+        S_var = jnp.exp(
+            jnp.log(S_est)
+            - jnp.logaddexp(
+                -1, jnp.logaddexp(n_obs / S_est, jnp.log(n_obs / S_est))
             )
         )
     else:
-        S_var = np.sum(counts * (np.exp(-freqs) - np.exp(-2 * freqs))) - (
-            np.square(np.sum(freqs * np.exp(-freqs) * counts)) / n_obs
+        S_var = jnp.sum(counts * (jnp.exp(-freqs) - jnp.exp(-2 * freqs))) - (
+            jnp.square(jnp.sum(freqs * jnp.exp(-freqs) * counts)) / n_obs
         )
 
     lower, upper = _confidence_interval(
         counts, freqs, S_est, S_var, confidence
     )
     return Estimate(
-        float(S_est), float(np.sqrt(S_var)), float(lower), float(upper)
+        float(S_est), float(jnp.sqrt(S_var)), float(lower), float(upper)
     )
 
 
@@ -692,8 +694,8 @@ def richness_chao(
     Returns:
         Dataclass with the estimate, standard error, and confidence interval.
     """
-    S_obs = np.sum(counts)
-    n_obs = np.sum(freqs * counts) if units == 1 else units
+    S_obs = jnp.sum(counts)
+    n_obs = jnp.sum(freqs * counts) if units == 1 else units
     k = (n_obs - 1) / n_obs
 
     c_1 = cast(float_type, _frequency_count(counts, freqs, 1))
@@ -713,33 +715,37 @@ def richness_chao(
     if c_1 > 0 and c_2 > 0 and not bias_correction:
         # Eq. 5
         S_var = c_2 * (
-            ((k / 2) * np.square(c_1 / c_2))
-            + (np.square(k) * np.power(c_1 / c_2, 3))
-            + ((np.square(k) / 4) * np.power(c_1 / c_2, 4))
+            ((k / 2) * jnp.square(c_1 / c_2))
+            + (jnp.square(k) * jnp.power(c_1 / c_2, 3))
+            + ((jnp.square(k) / 4) * jnp.power(c_1 / c_2, 4))
         )
     elif c_1 > 0 and c_2 > 0 and bias_correction:
         # Eq. 6
         S_var = (
             (k * (c_1 / 2) * ((c_1 - 1) / (c_2 + 1)))
-            + (np.square(k) * (c_1 / 4) * np.square((2 * c_1 - 1) / (c_2 + 1)))
             + (
-                np.square(k)
+                jnp.square(k)
+                * (c_1 / 4)
+                * jnp.square((2 * c_1 - 1) / (c_2 + 1))
+            )
+            + (
+                jnp.square(k)
                 * (c_2 / 4)
-                * np.square(c_1 / (c_2 + 1))
-                * np.square((c_1 - 1) / (c_2 + 1))
+                * jnp.square(c_1 / (c_2 + 1))
+                * jnp.square((c_1 - 1) / (c_2 + 1))
             )
         )
     elif c_1 > 1 and c_2 == 0:
         # Eq. 7
         S_var = (
             ((k / 2) * c_1 * (c_1 - 1))
-            + ((np.square(k) / 4) * c_1 * (2 * c_1 - 1) ** 2)
-            - ((np.square(k) / 4) * (c_1**4 / S_est))
+            + ((jnp.square(k) / 4) * c_1 * (2 * c_1 - 1) ** 2)
+            - ((jnp.square(k) / 4) * (c_1**4 / S_est))
         )
     else:
         # Eq. 8
-        S_var = np.sum(counts * (np.exp(-freqs) - np.exp(-2 * freqs))) - (
-            np.square(np.sum(freqs * np.exp(-freqs) * counts)) / n_obs
+        S_var = jnp.sum(counts * (jnp.exp(-freqs) - jnp.exp(-2 * freqs))) - (
+            jnp.square(jnp.sum(freqs * jnp.exp(-freqs) * counts)) / n_obs
         )
 
     # Get CI
@@ -755,7 +761,7 @@ def richness_chao(
         )
 
     return Estimate(
-        float(S_est), float(np.sqrt(S_var)), float(lower), float(upper)
+        float(S_est), float(jnp.sqrt(S_var)), float(lower), float(upper)
     )
 
 
@@ -780,10 +786,10 @@ def _abundance(
         and coverage is a dataclass with coverage statistics.
     """
     f_1 = cast(float_type, _frequency_count(counts, freqs, 1))
-    S_rare = np.sum(np.where(freqs <= cutoff, counts, 0))
-    S_obs = np.sum(counts)
+    S_rare = jnp.sum(jnp.where(freqs <= cutoff, counts, 0))
+    S_obs = jnp.sum(counts)
     S_abun = S_obs - S_rare
-    n_rare = np.sum(np.where(freqs <= cutoff, freqs * counts, 0))
+    n_rare = jnp.sum(jnp.where(freqs <= cutoff, freqs * counts, 0))
 
     C_rare = 1 - (f_1 / n_rare)
     S_est = S_abun + (S_rare / C_rare)
@@ -798,10 +804,10 @@ def _abundance(
     if homogeneous:
         return S_est, coverage
 
-    summation = np.sum(
-        np.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
+    summation = jnp.sum(
+        jnp.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
     )
-    squareCV_rare = np.maximum(
+    squareCV_rare = jnp.maximum(
         0.0, (S_rare / C_rare) * (summation / (n_rare * (n_rare - 1))) - 1
     )
 
@@ -811,7 +817,7 @@ def _abundance(
         )
 
     S_est = S_abun + (S_rare / C_rare) + (f_1 * squareCV_rare / C_rare)
-    coverage.CV_rare = float(jax.lax.stop_gradient(np.sqrt(squareCV_rare)))
+    coverage.CV_rare = float(jax.lax.stop_gradient(jnp.sqrt(squareCV_rare)))
     return S_est, coverage
 
 
@@ -845,10 +851,10 @@ def _incidence(
     """
     q_1 = cast(float_type, _frequency_count(counts, freqs, 1))
     q_2 = cast(float_type, _frequency_count(counts, freqs, 2))
-    S_obs = np.sum(counts)
-    S_infreq = np.sum(np.where(freqs <= cutoff, counts, 0))
+    S_obs = jnp.sum(counts)
+    S_infreq = jnp.sum(jnp.where(freqs <= cutoff, counts, 0))
     S_freq = S_obs - S_infreq
-    n_infreq = np.sum(np.where(freqs <= cutoff, freqs * counts, 0))
+    n_infreq = jnp.sum(jnp.where(freqs <= cutoff, freqs * counts, 0))
 
     if q_1 > 0 and q_2 > 0:
         A = 2 * q_2 / ((units - 1) * q_1 + 2 * q_2)
@@ -871,10 +877,10 @@ def _incidence(
     if homogeneous:
         return S_est, coverage
 
-    summation = np.sum(
-        np.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
+    summation = jnp.sum(
+        jnp.where(freqs <= cutoff, freqs * (freqs - 1) * counts, 0)
     )
-    squareCV_infreq = np.maximum(
+    squareCV_infreq = jnp.maximum(
         0.0,
         (S_infreq / C_infreq)
         * (units / (units - 1))
@@ -891,7 +897,7 @@ def _incidence(
         )
 
     S_est = S_est + (q_1 * squareCV_infreq / C_infreq)
-    coverage.CV_rare = float(jax.lax.stop_gradient(np.sqrt(squareCV_infreq)))
+    coverage.CV_rare = float(jax.lax.stop_gradient(jnp.sqrt(squareCV_infreq)))
     return S_est, coverage
 
 
@@ -945,12 +951,12 @@ def richness_coverage(
         )
     if len(counts) <= 1 or 1 not in freqs:
         return CoverageBasedEstimate(
-            np.nan, np.nan, np.nan, np.nan, cutoff, np.nan, np.nan, 0, 0
+            jnp.nan, jnp.nan, jnp.nan, jnp.nan, cutoff, jnp.nan, jnp.nan, 0, 0
         )
-    S_obs, n_obs = np.sum(counts), np.sum(freqs * counts)
+    S_obs, n_obs = jnp.sum(counts), jnp.sum(freqs * counts)
     if adjust_cutoff:
-        S_obs, n_obs = np.sum(counts), np.sum(freqs * counts)
-        cutoff = int(np.maximum(cutoff, n_obs // S_obs))
+        S_obs, n_obs = jnp.sum(counts), jnp.sum(freqs * counts)
+        cutoff = int(jnp.maximum(cutoff, n_obs // S_obs))
     if units == 1:
         (S_est, coverage), gradient = _abundance_value_and_grad(
             counts, freqs, cutoff, bias_corrected, homogeneous
@@ -959,14 +965,14 @@ def richness_coverage(
         (S_est, coverage), gradient = _incidence_value_and_grad(
             counts, freqs, units, cutoff, bias_corrected, homogeneous
         )
-    cov = np.diag(counts) - (counts * counts[..., np.newaxis] / S_est)
-    S_var = np.sum(gradient * gradient[..., np.newaxis] * cov)
+    cov = jnp.diag(counts) - (counts * counts[..., jnp.newaxis] / S_est)
+    S_var = jnp.sum(gradient * gradient[..., jnp.newaxis] * cov)
     lower, upper = _confidence_interval(
         counts, freqs, S_est, S_var, confidence, log_transform=True
     )
     return CoverageBasedEstimate(
         float(S_est),
-        float(np.sqrt(S_var)),
+        float(jnp.sqrt(S_var)),
         float(lower),
         float(upper),
         cutoff=cutoff,
@@ -987,16 +993,16 @@ def _shannon(counts: Array, freqs: Array) -> float_type:
     Returns:
         The estimated Shannon diversity index.
     """
-    n_obs = np.sum(freqs * counts)
+    n_obs = jnp.sum(freqs * counts)
     C = 1 - (cast(float_type, _frequency_count(counts, freqs, 1)) / n_obs)
-    C = np.where(C == 0, 1 - ((n_obs - 1) / n_obs), C)
-    log_rel_freqs = np.log(freqs) + np.log(C) - np.log(n_obs)
-    return np.sum(
+    C = jnp.where(C == 0, 1 - ((n_obs - 1) / n_obs), C)
+    log_rel_freqs = jnp.log(freqs) + jnp.log(C) - jnp.log(n_obs)
+    return jnp.sum(
         -jax.lax.stop_gradient(counts)
-        * np.exp(log_rel_freqs)
+        * jnp.exp(log_rel_freqs)
         * log_rel_freqs
-        # / (1 - np.power(1 - np.exp(log_rel_freqs), n_obs))
-        / -np.expm1(n_obs * log1mexp(-log_rel_freqs))
+        # / (1 - jnp.power(1 - jnp.exp(log_rel_freqs), n_obs))
+        / -jnp.expm1(n_obs * log1mexp(-log_rel_freqs))
     )
 
 
@@ -1029,11 +1035,11 @@ def index_shannon(
     # Using variance of biased estimator instead
     del cutoff, adjust_cutoff, mode
     I_est = _shannon(counts, freqs)
-    n_obs = np.sum(freqs * counts)
+    n_obs = jnp.sum(freqs * counts)
     rel_freqs = freqs / n_obs
     I_var = (
-        np.sum(counts * rel_freqs * np.square(np.log(rel_freqs)))
-        - np.square(np.sum(counts * rel_freqs * np.log(rel_freqs)))
+        jnp.sum(counts * rel_freqs * jnp.square(jnp.log(rel_freqs)))
+        - jnp.square(jnp.sum(counts * rel_freqs * jnp.log(rel_freqs)))
     ) / n_obs
 
     # S_est = richness_coverage(
@@ -1042,10 +1048,10 @@ def index_shannon(
     # I_est, gradient = jax.value_and_grad(_shannon, allow_int=True)(
     #     counts, freqs
     # )
-    # cov = np.diag(counts) - (counts * counts[..., np.newaxis] / S_est)
-    # I_var = np.sum(gradient * gradient[..., np.newaxis] * cov)
+    # cov = jnp.diag(counts) - (counts * counts[..., jnp.newaxis] / S_est)
+    # I_var = jnp.sum(gradient * gradient[..., jnp.newaxis] * cov)
 
-    I_se = np.sqrt(I_var)
+    I_se = jnp.sqrt(I_var)
     sigmas = cast(float, scipy.stats.norm.interval(confidence)[1])
     lower, upper = I_est - sigmas * I_se, I_est + sigmas * I_se
     return Estimate(float(I_est), float(I_se), float(lower), float(upper))
@@ -1066,9 +1072,9 @@ def index_simpson(
     Returns:
         Dataclass with the estimate, standard error, and confidence interval.
     """
-    n_obs = np.sum(freqs * counts)
-    I_est = np.sum(counts * freqs * (freqs - 1)) / (n_obs * (n_obs - 1))
-    T_est = np.sum(counts * freqs * (freqs - 1) * (freqs - 2)) / (
+    n_obs = jnp.sum(freqs * counts)
+    I_est = jnp.sum(counts * freqs * (freqs - 1)) / (n_obs * (n_obs - 1))
+    T_est = jnp.sum(counts * freqs * (freqs - 1) * (freqs - 2)) / (
         n_obs * (n_obs - 1) * (n_obs - 2)
     )
     a = (4 * (n_obs - 2)) / ((n_obs) * (n_obs - 1))
@@ -1076,10 +1082,10 @@ def index_simpson(
     c = 2 / ((n_obs) * (n_obs - 1))
     I_var = (
         (a / (1 - b)) * T_est
-        - (b / (1 - b)) * np.square(I_est)
+        - (b / (1 - b)) * jnp.square(I_est)
         + (c / (1 - b)) * I_est
     )
-    I_se = np.sqrt(I_var)
+    I_se = jnp.sqrt(I_var)
     sigmas = cast(float, scipy.stats.norm.interval(confidence)[1])
     lower, upper = I_est - sigmas * I_se, I_est + sigmas * I_se
     return Estimate(float(I_est), float(I_se), float(lower), float(upper))
