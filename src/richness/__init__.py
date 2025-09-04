@@ -14,13 +14,16 @@ or, with raw incidence data, with each sampling unit represented as a Series
 
     incidence_richness_metrics([incidence_1, incidence_2, ...])
 
-Most other functions in this module work on a counts of frequencies.
+Most other functions in this module work on a histogram of frequencies.
 Frequency data can be summarized into frequency counts, which encode the
 number of species of a given frequency. For example, `f_0` is the count of
 undetected species and `f_1` is the count of singleton species (species that
 were only detected once). Frequency counts are stored as a float Array to allow
 for gradient calculation.
 """
+
+# TODO: check for off by one errors (ex. every species observed > 1 - use df?)
+# TODO: make sure 0's are handled correctly
 
 from __future__ import annotations
 
@@ -34,7 +37,6 @@ from typing import Any, Callable, Literal, TypeAlias, cast
 
 import jax
 import jax.numpy as np
-import jax.random
 import pandas as pd
 import scipy.special
 import scipy.stats
@@ -46,7 +48,7 @@ __version__ = "1.0.0"
 float_type: TypeAlias = float | Array
 
 
-def read_frequencies(path: str) -> "Series[int]":
+def read_frequencies(path: str) -> Series[int]:
     """Loads tab-delimited frequency data into a Pandas Series.
 
     The input data is assumed to have two columns separated by a tab character.
@@ -60,7 +62,7 @@ def read_frequencies(path: str) -> "Series[int]":
         A Series of frequencies, with species names stored in the index.
     """
     open_fn = gzip.open if os.path.splitext(path)[-1] == ".gz" else open
-    with open_fn(path, "rt", encoding="utf-8") as file_handle:  # type: ignore[operator]
+    with open_fn(path, "rt", encoding="utf-8") as file_handle:
         skiprows = 0
         while "\t" not in file_handle.readline():
             skiprows += 1
@@ -76,18 +78,12 @@ def read_frequencies(path: str) -> "Series[int]":
     ).iloc[:, 0]
 
 
-def split_frequencies(
-    abundance: "Series[int]", n: int = 2
-) -> list["Series[int]"]:
+def split_frequencies(abundance: Series[int], n: int = 2) -> list[Series[int]]:
     """Randomly sample a frequency Series into `n` Series."""
-    out: list["Series[int]"] = []
+    out: list[Series[int]] = []
     for _ in range(n - 1):
-        new = cast(
-            "Series[int]",
-            pd.Series(
-                data=scipy.stats.binom.rvs(abundance, 0.5),
-                index=abundance.index,
-            ),
+        new = pd.Series(
+            data=scipy.stats.binom.rvs(abundance, 0.5), index=abundance.index
         )
         abundance = abundance - new
         abundance = abundance[abundance > 0]
@@ -96,8 +92,8 @@ def split_frequencies(
     return [abundance] + out
 
 
-def get_frequency_counts(frequencies: "Series[int]") -> tuple[Array, Array]:
-    """Convert a frequency Series into a countsogram of frequency counts.
+def get_frequency_counts(frequencies: Series[int]) -> tuple[Array, Array]:
+    """Convert a frequency Series into a histogram of frequency counts.
 
     Args:
         frequencies: A Series of species frequencies.
@@ -121,8 +117,8 @@ def _frequency_count(
 
 
 def raw_to_frequencies(
-    incidence_series: Iterable[Mapping[Any, Any]] | "Sequence[Series[int]]"
-) -> "Series[int]":
+    incidence_series: Iterable[Mapping[Any, Any]] | Sequence[Series[int]],
+) -> Series[int]:
     """Converts raw incidence data to frequency data.
 
     Args:
@@ -174,7 +170,7 @@ class CoverageBasedEstimate(_CoverageData, Estimate):
 
 
 def abundance_richness_metrics(
-    frequencies: "Series[int]",
+    frequencies: Series[int],
     cutoff: int = 10,
     adjust_cutoff: bool = True,
     confidence: float = 0.95,
@@ -304,7 +300,7 @@ def abundance_richness_metrics(
 
 
 def abundance_richness_string(
-    frequencies: "Series[int]",
+    frequencies: Series[int],
     cutoff: int = 10,
     adjust_cutoff: bool = True,
     confidence: float = 0.95,
@@ -335,7 +331,7 @@ def abundance_richness_string(
 
 
 def incidence_richness_metrics(
-    raw_incidence: Sequence["Series[int]"],
+    raw_incidence: Sequence[Series[int]],
     n: int = 1,
     units: int | None = None,
     cutoff: int = 10,
@@ -487,7 +483,7 @@ def incidence_richness_metrics(
 
 
 def incidence_richness_string(
-    raw_incidence: Sequence["Series[int]"],
+    raw_incidence: Sequence[Series[int]],
     n: int = 1,
     units: int = 1,
     cutoff: int = 10,
@@ -564,8 +560,8 @@ def _confidence_interval(
 
 
 def richness_chapman(
-    frequencies_1: "Series[int]",
-    frequencies_2: "Series[int]",
+    frequencies_1: Series[int],
+    frequencies_2: Series[int],
     confidence: float = 0.95,
 ) -> Estimate:
     """Computes Chapman estimator of richness from capture-recapture.
@@ -606,9 +602,7 @@ def richness_chapman(
         (((K - k + 0.5) * (n - k + 0.5)) / (k + 0.5))
         * np.exp(sigmas * np.sqrt(theta_var))
     )
-    return Estimate(
-        float(S_est), float(np.sqrt(S_var)), float(lower), float(upper)
-    )
+    return Estimate(S_est, float(np.sqrt(S_var)), float(lower), float(upper))
 
 
 def richness_homogeneous_mle(
@@ -689,7 +683,7 @@ def richness_chao(
     """
     S_obs = np.sum(counts)
     n_obs = np.sum(freqs * counts) if units == 1 else units
-    k = (n_obs - 1) / n_obs  # type: ignore[operator]
+    k = (n_obs - 1) / n_obs
 
     c_1 = cast(float_type, _frequency_count(counts, freqs, 1))
     c_2 = cast(float_type, _frequency_count(counts, freqs, 2))
