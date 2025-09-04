@@ -48,6 +48,17 @@ __version__ = "1.0.0"
 float_type: TypeAlias = float | Array
 
 
+def log1mexp(x: jax.typing.ArrayLike) -> Array:
+    r"""Computes the element-wise log1mexp in a numerically stable way.
+
+    .. math::
+        \log \left( 1 - e^{-x} \right)
+
+    https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf.
+    """
+    return np.where(x > 0.693, np.log1p(-np.exp(-x)), np.log(-np.expm1(-x)))  # type: ignore[operator]
+
+
 def read_frequencies(path: str) -> Series[int]:
     """Loads tab-delimited frequency data into a Pandas Series.
 
@@ -979,12 +990,13 @@ def _shannon(counts: Array, freqs: Array) -> float_type:
     n_obs = np.sum(freqs * counts)
     C = 1 - (cast(float_type, _frequency_count(counts, freqs, 1)) / n_obs)
     C = np.where(C == 0, 1 - ((n_obs - 1) / n_obs), C)
-    rel_freqs = freqs * C / n_obs
+    log_rel_freqs = np.log(freqs) + np.log(C) - np.log(n_obs)
     return np.sum(
         -jax.lax.stop_gradient(counts)
-        * rel_freqs
-        * np.log(rel_freqs)
-        / (1 - np.power(1 - rel_freqs, n_obs))
+        * np.exp(log_rel_freqs)
+        * log_rel_freqs
+        # / (1 - np.power(1 - np.exp(log_rel_freqs), n_obs))
+        / -np.expm1(n_obs * log1mexp(-log_rel_freqs))
     )
 
 
