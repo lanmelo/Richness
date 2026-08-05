@@ -41,12 +41,12 @@ import scipy.stats
 from jax import Array
 from pandas import DataFrame, Series
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 float_type: TypeAlias = float | Array
 
 
-def log1mexp(x: jax.typing.ArrayLike) -> Array:
+def log1mexp(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
     r"""Computes the element-wise log1mexp in a numerically stable way.
 
     .. math::
@@ -55,6 +55,23 @@ def log1mexp(x: jax.typing.ArrayLike) -> Array:
     https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf.
     """
     return jnp.where(x > 0.693, jnp.log1p(-jnp.exp(-x)), jnp.log(-jnp.expm1(-x)))  # type: ignore[operator]
+
+
+def logsubexp(
+    x: jax.typing.ArrayLike, y: jax.typing.ArrayLike
+) -> jax.typing.ArrayLike:
+    """Compute log(exp(x) - exp(y)) stably, assuming x > y."""
+    return x + log1mexp(x - y)  # type: ignore[operator]
+
+
+def logexpm1(x: jax.typing.ArrayLike) -> jax.typing.ArrayLike:
+    """Compute the softplus inverse logexpm1 in a numericaly stable way.
+
+    .. math::
+        \log \left( e^x - 1 \right)
+
+    """
+    return x + log1mexp(x)
 
 
 def read_frequencies(path: str) -> Series[int]:
@@ -248,7 +265,7 @@ def abundance_richness_metrics(
         cutoff=cutoff,
         adjust_cutoff=adjust_cutoff,
         confidence=confidence,
-        bias_corrected=True,
+        bias_correction=True,
     )
 
     # Build statistics dataframe
@@ -427,7 +444,7 @@ def incidence_richness_metrics(
         cutoff=cutoff,
         adjust_cutoff=adjust_cutoff,
         confidence=confidence,
-        bias_corrected=True,
+        bias_correction=True,
     )
 
     # Build statistics dataframe
@@ -651,10 +668,11 @@ def richness_homogeneous_mle(
         )
 
     if abs(S_est - S_obs) >= 1e-5:
+        # S_est / [e^(n_obs / S_est) - (n_obs / S_est) - 1]
         S_var = jnp.exp(
             jnp.log(S_est)
-            - jnp.logaddexp(
-                -1, jnp.logaddexp(n_obs / S_est, jnp.log(n_obs / S_est))
+            - logsubexp(
+                logexpm1(n_obs / S_est), jnp.log(n_obs) - jnp.log(S_est)
             )
         )
     else:
@@ -769,7 +787,7 @@ def _abundance(
     counts: Array,
     freqs: Array,
     cutoff: int = 10,
-    bias_corrected: bool = False,
+    bias_correction: bool = False,
     homogeneous: bool = False,
 ) -> tuple[float_type, _CoverageData]:
     """Computes ACE(-1) estimator of richness for abundance data.
@@ -778,7 +796,7 @@ def _abundance(
         counts: An int Array of frequency counts.
         freqs: A float Array of frequencies.
         cutoff: Frequency cutoff for rare species used for estimating coverage.
-        bias_corrected: Whether to use ACE-1 instead of ACE.
+        bias_correction: Whether to use ACE-1 instead of ACE.
         homogeneous: Whether to use homogeneous assumption.
 
     Returns:
@@ -811,7 +829,7 @@ def _abundance(
         0.0, (S_rare / C_rare) * (summation / (n_rare * (n_rare - 1))) - 1
     )
 
-    if bias_corrected:
+    if bias_correction:
         squareCV_rare = squareCV_rare * (
             1 + ((1 - C_rare) / C_rare) * (summation / (n_rare - 1))
         )
@@ -832,7 +850,7 @@ def _incidence(
     freqs: Array,
     units: int,
     cutoff: int = 10,
-    bias_corrected: bool = False,
+    bias_correction: bool = False,
     homogeneous: bool = False,
 ) -> tuple[float_type, _CoverageData]:
     """Computes ICE(-1) estimator of richness for abundance data.
@@ -842,7 +860,7 @@ def _incidence(
         freqs: A float Array of frequencies.
         units: The number of sampling units in the incidence data.
         cutoff: Frequency cutoff for rare species used for estimating coverage.
-        bias_corrected: Whether to use ICE-1 instead of ICE.
+        bias_correction: Whether to use ICE-1 instead of ICE.
         homogeneous: Whether to use homogeneous assumption.
 
     Returns:
@@ -888,7 +906,7 @@ def _incidence(
         - 1,
     )
 
-    if bias_corrected:
+    if bias_correction:
         squareCV_infreq = squareCV_infreq * (
             1
             + (q_1 / C_infreq)
@@ -913,7 +931,7 @@ def richness_coverage(
     units: int = 1,
     cutoff: int = 10,
     adjust_cutoff: bool = True,
-    bias_corrected: bool = False,
+    bias_correction: bool = False,
     homogeneous: bool = False,
     confidence: float = 0.95,
 ) -> CoverageBasedEstimate:
@@ -933,7 +951,7 @@ def richness_coverage(
         cutoff: Frequency cutoff for rare species used for estimating coverage.
         adjust_cutoff: Whether to adjust cutoff in heterogeneous samples.
         confidence: The confidence level of the confidence interval.
-        bias_corrected: Whether to use A/ICE-1 instead of A/ICE.
+        bias_correction: Whether to use A/ICE-1 instead of A/ICE.
         homogeneous: Whether to use homogeneous assumption.
 
     Returns:
@@ -953,23 +971,25 @@ def richness_coverage(
         return CoverageBasedEstimate(
             jnp.nan, jnp.nan, jnp.nan, jnp.nan, cutoff, jnp.nan, jnp.nan, 0, 0
         )
-    S_obs, n_obs = jnp.sum(counts), jnp.sum(freqs * counts)
     if adjust_cutoff:
         S_obs, n_obs = jnp.sum(counts), jnp.sum(freqs * counts)
         cutoff = int(jnp.maximum(cutoff, n_obs // S_obs))
     if units == 1:
         (S_est, coverage), gradient = _abundance_value_and_grad(
-            counts, freqs, cutoff, bias_corrected, homogeneous
+            counts, freqs, cutoff, bias_correction, homogeneous
         )
     else:
         (S_est, coverage), gradient = _incidence_value_and_grad(
-            counts, freqs, units, cutoff, bias_corrected, homogeneous
+            counts, freqs, units, cutoff, bias_correction, homogeneous
         )
     cov = jnp.diag(counts) - (counts * counts[..., jnp.newaxis] / S_est)
     S_var = jnp.sum(gradient * gradient[..., jnp.newaxis] * cov)
-    lower, upper = _confidence_interval(
-        counts, freqs, S_est, S_var, confidence, log_transform=True
-    )
+    if S_var >= 0:
+        lower, upper = _confidence_interval(
+            counts, freqs, S_est, S_var, confidence, log_transform=True
+        )
+    else:
+        lower, upper = jnp.nan, jnp.nan
     return CoverageBasedEstimate(
         float(S_est),
         float(jnp.sqrt(S_var)),
