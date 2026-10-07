@@ -5,7 +5,9 @@ import sys
 import time
 
 from . import (
+    MAX_TERMS,
     abundance_richness_string,
+    complexity_string,
     incidence_richness_string,
     read_frequencies,
 )
@@ -23,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     build_abundance_parser(subparsers)
     build_incidence_parser(subparsers)
+    build_complexity_parser(subparsers)
     return parser
 
 
@@ -116,6 +119,64 @@ def build_incidence_parser(
     )
 
 
+def build_complexity_parser(
+    subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]",
+) -> None:
+    """Add the complexity subcommand to an ArgumentParser."""
+    complexity_parser = subparsers.add_parser(
+        "complexity",
+        help="Predict sequencing library complexity from frequencies",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    complexity_parser.add_argument(
+        "-c",
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="The confidence level of the confidence interval.",
+    )
+    complexity_parser.add_argument(
+        "-e",
+        "--extrapolate",
+        type=float,
+        default=10.0,
+        help=(
+            "The largest depth to predict,"
+            " in multiples of the initial experiment."
+        ),
+    )
+    complexity_parser.add_argument(
+        "-s",
+        "--steps",
+        type=int,
+        default=20,
+        help="The number of depths at which to predict.",
+    )
+    complexity_parser.add_argument(
+        "-b",
+        "--bootstraps",
+        type=int,
+        default=100,
+        help="The number of bootstrap replicates, or 0 for none.",
+    )
+    complexity_parser.add_argument(
+        "-t",
+        "--maxterms",
+        type=int,
+        default=MAX_TERMS,
+        help="The largest number of power series terms to use.",
+    )
+    complexity_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed for the random generator, for reproducible intervals.",
+    )
+    complexity_parser.add_argument(
+        "frequencies", type=str, help="Path to a molecule frequency TSV."
+    )
+
+
 def main() -> None:
     """Parses arguments and prints richness estimates."""
 
@@ -141,6 +202,18 @@ def main() -> None:
                 cutoff=args.cutoff,
                 adjust_cutoff=not args.disablecutoffadjust,
                 confidence=args.confidence,
+            )
+        )
+    elif args.command == "complexity":
+        print(
+            complexity_string(
+                read_frequencies(args.frequencies),
+                max_extrapolation=args.extrapolate,
+                steps=args.steps,
+                bootstraps=args.bootstraps,
+                confidence=args.confidence,
+                max_terms=args.maxterms,
+                seed=args.seed,
             )
         )
     else:

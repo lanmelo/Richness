@@ -67,6 +67,54 @@ Note that if the number of sampling units should be high to get reliable estimat
     * Bias-corrected form ICE-1 should be used for heterogenous (`CV > 2`) data
 * tl;dr: if C>0.5 use Chao2 (or Chao2-bc if CV near zero); if CV>2 use ICE-1; ICE otherwise
 
+## Library complexity (PreSeq)
+The estimators above are *asymptotic*: they estimate how many species exist.
+Sequencing experiments usually pose a different question:
+how many **distinct molecules** will be seen if the library is sequenced more deeply?
+That prediction is the *complexity curve*, implemented here following Daley and Smith (2013).
+
+    richness complexity -e 10 counts.tsv
+
+or, in Python, `complexity_metrics(frequencies)`.
+The curve gives expected distinct molecules against reads sequenced,
+with bootstrap confidence intervals.
+It is exact at or below the observed depth and extrapolated above it.
+
+* Note that a yield at a stated depth is **not** an asymptotic richness estimate,
+which is why these results are reported separately from the tables above
+    * Extrapolating to infinite depth means estimating the library size,
+    which is unidentifiable and has no unbiased estimator without further assumptions
+* The expected yield is given by the Good–Toulmin power series,
+whose truncation only converges within twice the initial experiment
+    * Approximating it by a *rational function* instead extends the useful range
+    to 30 times the initial experiment or more
+    * The approximation is a truncated continued fraction, whose coefficients come
+    from the quotient-difference algorithm
+* An even number of series terms is used, so the predicted yield is bounded,
+as a finite library requires
+    * This is an odd order approximation in the notation of Daley and Smith,
+    which converges from below and is therefore conservative
+* Since the series coefficients are estimated from counts rather than known exactly,
+high order approximations amplify sampling noise
+    * The order is therefore raised only while successive approximations agree
+    * The order selected is reported as `terms`; few terms means little of the
+    data informed the prediction
+* Rational approximations have poles, which limit how far a given library can be
+extrapolated at all
+    * Where the requested depth cannot be reached, the curve is reported as far as
+    it is sound and the limit is reported as the `extrapolation limit`
+    * Libraries that are nearly saturated, homogeneous, or too shallowly sequenced
+    support little or no extrapolation
+* tl;dr: use this to decide how much more to sequence; use the estimators above to
+ask how much is out there
+
+Validated against the exact expected yields of simulated libraries of known
+composition, and against `preseqR`, the reference implementation.
+For extrapolations of up to 20 times the initial experiment,
+predictions agree with both to within a few percent on gamma-Poisson libraries,
+and to within roughly ten percent for extreme, heavily undersampled
+frequency distributions such as a power decay with 1% of the library observed.
+
 ## References:
 * Gotelli N. J. and Chao A. (2013) Measuring and Estimating Species Richness, Species Diversity, and Biotic Similarity from Sampling Data. Levin S.A. (ed.) Encyclopedia of Biodiversity, second edition, Volume 5, pp. 195- 211.
     * Provides an overview on all of these metrics
@@ -83,3 +131,11 @@ Note that if the number of sampling units should be high to get reliable estimat
     * These two programs offer reference implementations for these metrics
 * Chao, A. and Gotelli, N. J. and Hsieh, T. C. and Sander, E. L. and Ma, K. H. and Colwell, R. K. and Ellison, A. M. (2014) Rarefaction and extrapolation with Hill numbers: a framework for sampling and estimation in species diversity studies. Ecological Monographs, 84(1), pp. 45–67
     * Covers the relationship between Hill numbers, richness, and Simpson's and Shannon's indices
+* Daley, T. and Smith, A. D. (2013) Predicting the molecular complexity of sequencing libraries. Nature Methods, 10(4), pp. 325-327
+    * Introduces the rational function approximation of the Good-Toulmin series implemented in `complexity`
+* Good, I. J. and Toulmin, G. H. (1956) The number of new species, and the increase in population coverage, when a sample is increased. Biometrika, 43, pp. 45-63
+    * The power series underlying all yield predictions
+* Baker, G. A. and Graves-Morris, P. (1996) Pade Approximants. Cambridge University Press
+    * Covers rational approximation, continued fractions, and the quotient-difference algorithm
+* Schmitz, J. E. and Rahmann, S. (2025) A comprehensive review and evaluation of species richness estimation. Briefings in Bioinformatics, 26(2), bbaf158
+    * Compares 25 richness estimators, including most of those implemented here

@@ -13,7 +13,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Intended Audience :: Science/Research",
 ]
-dependencies = ["jax[cpu]", "scipy", "pandas"]
+dependencies = ["jax[cpu]", "numpy", "scipy", "pandas"]
 
 [tool.setuptools.dynamic]
 version = { attr = "richness.__version__" }
